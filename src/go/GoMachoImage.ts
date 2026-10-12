@@ -63,7 +63,13 @@ export const readGoMachoImage = (bytes: Buffer): GoBinaryContainer => {
       const maxProtection = reader.u32(offset + (wide ? 56 : 40));
       const protection = reader.u32(offset + (wide ? 60 : 44));
       const sectionCount = reader.u32(offset + (wide ? 64 : 48));
-      if (fileSize > memorySize || address + memorySize > 1n << BigInt(bits))
+      // A segment with no virtual size is file-only data such as Go's
+      // __DWARF: it is never mapped, so its bytes have no address.
+      const mapped = memorySize !== 0n;
+      if (
+        (mapped && fileSize > memorySize) ||
+        address + memorySize > 1n << BigInt(bits)
+      )
         throw new GoBinaryFormatFailure(
           "malformed",
           "Mach-O segment addresses or sizes are invalid",
@@ -79,6 +85,7 @@ export const readGoMachoImage = (bytes: Buffer): GoBinaryContainer => {
           : reader.fileRange(fileOffset, fileSize, "Mach-O segment")),
         address,
       };
+      if (!mapped) mapping.size = 0;
       const name = fixedName(
         reader.range(offset + 8, 16, "Mach-O segment name"),
       );

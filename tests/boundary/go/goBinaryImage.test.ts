@@ -436,6 +436,39 @@ it("does not treat Mach-O __PAGEZERO as a module string header", () => {
   expect(() => readGoBinaryImage(fixture.bytes)).toThrowError(/mapped|range/i);
 });
 
+it.each([32, 64] as const)(
+  "reads a %d-bit Mach-O image carrying a file-only segment",
+  (bits) => {
+    // Go's linker emits __DWARF with file bytes and no virtual size, at the
+    // address where the next mapped segment starts.
+    const fixture = createGoBinaryFixture({ format: "macho", bits });
+    addLegacyMapping(
+      fixture.bytes,
+      "macho",
+      { address: 0x11000n, fileOffset: 3072, fileSize: 512, memorySize: 0 },
+      { bits, little: true },
+    );
+    expect(readGoBinaryImage(fixture.bytes).build_info).toMatchObject({
+      header_offset: fixture.headerOffset,
+      go_version: "go1.26.0",
+      module_text: GO_MODULE_TEXT,
+    });
+  },
+);
+
+it("does not map a file-only Mach-O segment over a zero-filled module header", () => {
+  const fixture = zeroFilledModuleFixture("macho", 64, "little");
+  addLegacyMapping(fixture.bytes, "macho", {
+    address: fixture.moduleAddress,
+    fileOffset: 512,
+    fileSize: 16,
+    memorySize: 0,
+  });
+  expect(readGoBinaryImage(fixture.bytes).build_info?.go_version).toBe(
+    "go1.17",
+  );
+});
+
 it.each(["elf", "pe", "macho"] as const)(
   "refuses file aliases overlapping only part of a zero-filled %s module header",
   (format) => {
